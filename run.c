@@ -6,12 +6,29 @@
 
 int ERROR_EXIT_STATUS = 1;
 
+unsigned int xorbuf(unsigned int *buffer, int size) {
+    unsigned int result = 0;
+    for (int i = 0; i < size; i++) {
+        result ^= buffer[i];
+    }
+    return result;
+}
+
 int readFile(char* filename, int blockSize, int blockCount) {
   int fd = open(filename, O_RDONLY);
   if (fd == -1) {
     perror("open");
     return ERROR_EXIT_STATUS;
   }
+
+  unsigned int* buffer = malloc(blockSize);
+  unsigned int xor_running = 0;
+
+  for (int i = 0; i < blockCount; i++) {
+    read(fd, buffer, blockSize);
+    xor_running = xor_running ^ xorbuf(buffer, blockSize);
+  }
+   printf("xor_running: %d\n", xor_running);
 
   return 0;
 }
@@ -22,16 +39,24 @@ int writeFile(char* filename, int blockSize, int blockCount) {
     perror("open");
   }
 
-  void* buffer = malloc(blockSize);
+  unsigned int* buffer = malloc(blockSize);
+  
+  
 
   for (int i = 0; i < blockCount; i++) {
+    for (int i = 0; i < blockSize/4; i++){
+       buffer[i] = rand();
+    }
+
     write(fd, buffer, blockSize);
   }
 
+  free(buffer);
   close(fd);
 
   return 0;
 }
+
 
 // ./run <filename> [-r|-w] <block_size> <block_count>
 int main(int argc, char **argv) {
