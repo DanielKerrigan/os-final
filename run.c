@@ -14,7 +14,7 @@ unsigned int xorbuf(unsigned int *buffer, int size) {
     return result;
 }
 
-int readFile(char* filename, int blockSize, int blockCount) {
+int readFile(char* filename, long blockSize, long blockCount) {
   int fd = open(filename, O_RDONLY);
   if (fd == -1) {
     perror("open");
@@ -34,7 +34,7 @@ int readFile(char* filename, int blockSize, int blockCount) {
   return 0;
 }
 
-int writeFile(char* filename, int blockSize, int blockCount) {
+int writeFile(char* filename, long blockSize, long blockCount) {
   int fd = open(filename, O_WRONLY|O_CREAT|O_TRUNC, S_IRWXU);
   if (fd == -1) {
     perror("open");
@@ -57,8 +57,9 @@ int writeFile(char* filename, int blockSize, int blockCount) {
 int main(int argc, char **argv) {
   char* filename = argv[1];
   char readOrWrite = argv[2][1];
-  int blockSize = atoi(argv[3]);
-  int blockCount = atoi(argv[4]);
+
+  long blockSize = atol(argv[3]);
+  long blockCount = atol(argv[4]);
 
   if (readOrWrite == 'r') {
     return readFile(filename, blockSize, blockCount);

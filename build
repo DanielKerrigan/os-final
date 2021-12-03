@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
 
 gcc run.c -o run
-gcc reasonable.c -o reasonable
-
+gcc benchmark.c -o benchmark

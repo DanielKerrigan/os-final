@@ -9,12 +9,12 @@ double getTime() {
   return tv.tv_sec + (tv.tv_usec / 1000000.0);
 }
 
-void callWrite(int bSize, int bCount){
+void callWrite(long bSize, long bCount){
     char bSizeStr[64];
     char bCountStr[64];
 
-    sprintf(bSizeStr, "%d", bSize);
-    sprintf(bCountStr, "%d", bCount);
+    sprintf(bSizeStr, "%ld", bSize);
+    sprintf(bCountStr, "%ld", bCount);
 
     char* arr[64] = {"run", "out1.txt", "-w", bSizeStr, bCountStr};
     int pid = fork();
@@ -28,12 +28,12 @@ void callWrite(int bSize, int bCount){
     }
 }
 
-void callRead(int bSize, int bCount){
+void callRead(long bSize, long bCount){
     char bSizeStr[64];
     char bCountStr[64];
 
-    sprintf(bSizeStr, "%d", bSize);
-    sprintf(bCountStr, "%d", bCount);
+    sprintf(bSizeStr, "%ld", bSize);
+    sprintf(bCountStr, "%ld", bCount);
 
     char* arr[64] = {"run", "out1.txt", "-r", bSizeStr, bCountStr};
     int pid = fork();
@@ -47,9 +47,9 @@ void callRead(int bSize, int bCount){
     }
 }
 
-int findReasonable(int bSize) {
+int findReasonableBlockCount(long bSize, int output) {
     // start with reading a single block, double it each iteration
-    int bCount = 1;
+    long bCount = 1;
 
     // for timing
     double start, end;
@@ -59,8 +59,8 @@ int findReasonable(int bSize) {
     long reasonableFileSize = 0;
 
     // create a big test file at the start
-    int testFileBlockSize = 1 << 20; // 1 MiB
-    int testFileBlockCount = 96;
+    long testFileBlockSize = 1 << 20; // 1 MiB
+    long testFileBlockCount = 4096;
     callWrite(testFileBlockSize, testFileBlockCount);
 
     do {
@@ -80,24 +80,32 @@ int findReasonable(int bSize) {
 
         bCount *= 2;
     }
-    while(delta < 10);
+    while(delta < 5);
 
     bCount /= 2;
 
-    reasonableFileSize = bCount * bSize;
-    double fileSizeMiB = ((double) reasonableFileSize) / (1 << 20);
+    if (output) {
+      reasonableFileSize = bCount * bSize;
+      double fileSizeMiB = ((double) reasonableFileSize) / (1 << 20);
 
-    printf("reasonable file size: %.2f MiB\n", fileSizeMiB);
-    printf("time taken to read: %f seconds\n", delta);
-    printf("block size: %d\n", bSize);
-    printf("block count: %d\n", bCount);
+      printf("reasonable file size: %.2f MiB\n", fileSizeMiB);
+      printf("time taken to read: %f seconds\n", delta);
+      printf("block size: %ld\n", bSize);
+      printf("block count: %ld\n", bCount);
+    }
 
-    return 0;
+    return bCount;
 }
 
 int main(int argc, char **argv) {
-    int blockSize = atoi(argv[1]);
-    findReasonable(blockSize);
+    char mode = argv[1][1];
+
+    if (mode == 'r') {
+      long blockSize = atol(argv[2]);
+      findReasonableBlockCount(blockSize, 1);
+    } else if (mode == 'b') {
+
+    }
 
     return 0;
 }
