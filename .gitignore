@@ -3,6 +3,7 @@ run
 reasonable
 .vscode
 *.txt
+ubuntu.iso
 
 # Prerequisites
 *.d

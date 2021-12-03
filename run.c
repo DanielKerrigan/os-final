@@ -28,7 +28,8 @@ int readFile(char* filename, int blockSize, int blockCount) {
     read(fd, buffer, blockSize);
     xor_running = xor_running ^ xorbuf(buffer, blockSize);
   }
-   printf("xor_running: %d\n", xor_running);
+
+  printf("%08x\n", xor_running);
 
   return 0;
 }
@@ -40,14 +41,8 @@ int writeFile(char* filename, int blockSize, int blockCount) {
   }
 
   unsigned int* buffer = malloc(blockSize);
-  
-  
 
   for (int i = 0; i < blockCount; i++) {
-    for (int i = 0; i < blockSize/4; i++){
-       buffer[i] = rand();
-    }
-
     write(fd, buffer, blockSize);
   }
 
