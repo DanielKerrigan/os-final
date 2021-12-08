@@ -1,4 +1,4 @@
-# CD-GY 6223 Fall 2021 Operating Systems - Final Project
+# CS-GY 6233 Final Project
 
 Racquel Fygenson (rlf9859)
 
