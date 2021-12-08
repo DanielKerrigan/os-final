@@ -3,8 +3,19 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <errno.h>
+#include <sys/stat.h>
+#include <pthread.h>
+#include <math.h>
 
 int ERROR_EXIT_STATUS = 1;
+
+struct readArgs {
+  char* filename;
+  long blockSize;
+  long blockCount;
+  off_t offset;
+  int id;
+};
 
 unsigned int xorbuf(unsigned int *buffer, int size) {
     unsigned int result = 0;
@@ -14,49 +25,94 @@ unsigned int xorbuf(unsigned int *buffer, int size) {
     return result;
 }
 
-int readFile(char* filename, long blockSize, long blockCount, int quiet) {
+unsigned int readFile(char* filename, long blockSize, long blockCount, off_t offset, int quiet) {
   int fd = open(filename, O_RDONLY);
   if (fd == -1) {
     perror("open");
     return ERROR_EXIT_STATUS;
   }
 
+  if (offset != 0) {
+    off_t lseekOffset = lseek(fd, offset, SEEK_SET);
+  }
+
   unsigned int* buffer = malloc(blockSize);
   unsigned int xor_running = 0;
 
+  size_t bytesRead;
+
   for (int i = 0; i < blockCount; i++) {
-    read(fd, buffer, blockSize);
-    xor_running = xor_running ^ xorbuf(buffer, blockSize);
+    bytesRead = read(fd, buffer, blockSize);
+    xor_running = xor_running ^ xorbuf(buffer, bytesRead / 4);
   }
 
   if(!quiet){
     printf("%08x\n", xor_running);
   }
 
-  return 0;
+  return xor_running;
+}
+
+void* readFileThread(void *arg) {
+  struct readArgs *args = (struct readArgs*) arg;
+
+  long xor = (long) readFile(args->filename, args->blockSize, args->blockCount, args->offset, 1);
+
+  pthread_exit((void *) xor);
 }
 
 int readFileFast(char* filename){
-  int fd = open(filename, O_RDONLY);
-  int blockSize = 1024;
-  int bytesRead = 0;
+  struct stat statbuf;
+  stat(filename, &statbuf);
 
-  if (fd == -1) {
-    perror("open");
-    return ERROR_EXIT_STATUS;
+  off_t totalFileSize = statbuf.st_size;
+
+  int numThreads = 4;
+  int bytesPerInt = 4;
+
+  long blockSize = 1024;
+
+  off_t idealBytesPerThread = bytesPerInt * (totalFileSize / (numThreads * bytesPerInt));
+
+  off_t blockCountPerThread = idealBytesPerThread / blockSize;
+
+  off_t realBytesPerThread = blockSize * blockCountPerThread;
+
+  pthread_t *threads = (pthread_t *) malloc(sizeof(pthread_t)*numThreads);
+
+  for (int i = 0; i < numThreads; i++) {
+    off_t offset = i * realBytesPerThread;
+
+    long blockCount = blockCountPerThread;
+
+    if (i == numThreads - 1) {
+      off_t bytesLeft = totalFileSize - offset;
+      blockCount = (long) ceil((double) bytesLeft / blockSize);
+    }
+
+    struct readArgs* args = malloc(sizeof(struct readArgs));
+
+    args->filename = filename;
+    args->blockSize = blockSize;
+    args->blockCount = blockCount;
+    args->offset = offset;
+    args->id = i;
+
+    pthread_create(&threads[i], NULL, readFileThread, (void *)args);
   }
 
-  unsigned int* buffer = malloc(blockSize);
-  unsigned int xor_running = 0;
+  long xor = 0;
 
-  while((bytesRead = read(fd, buffer, blockSize)) > 0){
-    xor_running = xor_running ^ xorbuf(buffer, bytesRead);
+  for (int i = 0; i < numThreads; i++) {
+    long xorThread;
+    pthread_join(threads[i], (void **)&xorThread);
+
+    xor = xor ^ xorThread;
   }
 
-  printf("%08x\n", xor_running);
+  printf("%08lx\n", xor);
 
   return 0;
-
 }
 
 int writeFile(char* filename, long blockSize, long blockCount) {
@@ -96,12 +152,12 @@ int main(int argc, char **argv) {
     }
 
     if (mode == 'r') {
-      return readFile(filename, blockSize, blockCount, quiet);
+      return readFile(filename, blockSize, blockCount, 0, quiet);
     } else if (mode == 'w'){
       return writeFile(filename, blockSize, blockCount);
     } else {
       fprintf(stderr, "unknown flag -%c\n", mode);
       return ERROR_EXIT_STATUS;
     }
-  }  
+  }
 }
