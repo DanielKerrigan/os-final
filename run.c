@@ -51,6 +51,9 @@ unsigned int readFile(char *filename, long blockSize, long blockCount,
     printf("%08x\n", xor_running);
   }
 
+  free(buffer);
+  close(fd);
+
   return xor_running;
 }
 
@@ -83,6 +86,8 @@ int readFileFast(char *filename) {
 
   pthread_t *threads = (pthread_t *)malloc(sizeof(pthread_t) * numThreads);
 
+  struct readArgs *args [numThreads];
+
   for (int i = 0; i < numThreads; i++) {
     off_t offset = i * realBytesPerThread;
 
@@ -93,15 +98,15 @@ int readFileFast(char *filename) {
       blockCount = (long)ceil((double)bytesLeft / blockSize);
     }
 
-    struct readArgs *args = malloc(sizeof(struct readArgs));
+    args[i] = malloc(sizeof(struct readArgs));
 
-    args->filename = filename;
-    args->blockSize = blockSize;
-    args->blockCount = blockCount;
-    args->offset = offset;
-    args->id = i;
+    args[i]->filename = filename;
+    args[i]->blockSize = blockSize;
+    args[i]->blockCount = blockCount;
+    args[i]->offset = offset;
+    args[i]->id = i;
 
-    pthread_create(&threads[i], NULL, readFileThread, (void *)args);
+    pthread_create(&threads[i], NULL, readFileThread, args[i]);
   }
 
   long xor = 0;
@@ -115,11 +120,17 @@ int readFileFast(char *filename) {
 
   printf("%08lx\n", xor);
 
+  for(int i = 0; i < numThreads; i++){
+    free(args[i]);
+  }
+  
+  free(threads);
+
   return 0;
 }
 
 int writeFile(char *filename, long blockSize, long blockCount) {
-  int fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, S_IRWXU);
+  int fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, S_IRWXU | S_IRWXG | S_IRWXO);
   if (fd == -1) {
     perror("open");
   }

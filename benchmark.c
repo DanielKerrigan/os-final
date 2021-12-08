@@ -41,7 +41,7 @@ double callRead(long bSize, long bCount) {
   sprintf(bSizeStr, "%ld", bSize);
   sprintf(bCountStr, "%ld", bCount);
 
-  char *arr[64] = {"run", "out1.txt", "-r", bSizeStr, bCountStr, "-q"};
+  char *arr[64] = {"run", "ubuntu.iso", "-r", bSizeStr, bCountStr, "-q"};
 
   start = getTime();
   int pid = fork();
@@ -58,10 +58,27 @@ double callRead(long bSize, long bCount) {
   return end - start;
 }
 
-double callLseek() {
-  double start, now;
-  int counter = 0;
-  int numSec = 5;
+
+void clearCache(){
+   char *arr[64] = {"purge"};
+
+  int pid = fork();
+  if (pid == 0) {
+    execvp(arr[0], arr);
+    perror("clear cache error ");
+  }
+  int ret = wait(NULL);
+  if (ret == -1) {
+    perror("wait");
+  }
+
+}
+
+
+
+double callLseek(int numCalls) {
+  double start, end;
+
 
   int fd = open("out1.txt", O_RDONLY);
 
@@ -71,52 +88,48 @@ double callLseek() {
   }
 
   start = getTime();
-  now = getTime();
-  while (now - start < numSec) {
+  for(int i = 0; i < numCalls; i++){
     lseek(fd, 0, SEEK_SET);
-    counter++;
-    now = getTime();
   }
+  end = getTime();
 
-  return counter / (now - start);
+  return numCalls / (end - start);
 }
 
-double callGetpid() {
-  double start, now;
-  int counter = 0;
-  int numSec = 5;
+double callGetpid(int numCalls) {
+  double start, end;
+
+  int fd = open("out1.txt", O_RDONLY);
+
+  if (fd == -1) {
+    perror("open");
+    return 1;
+  }
 
   start = getTime();
-  now = getTime();
-  while (now - start < numSec) {
+  for(int i = 0; i < numCalls; i++){
     getpid();
-    counter++;
-    now = getTime();
   }
+  end = getTime();
 
-  return counter / (now - start);
+  return numCalls / (end - start);
 }
 
-double callGetuid() {
-  double start, now;
-  int counter = 0;
-  int numSec = 5;
+double callIncr(int numCalls) {
+  double start, end;
+  int j = 0;
 
   start = getTime();
-  now = getTime();
-  while (now - start < numSec) {
-    getuid();
-    counter++;
-    now = getTime();
+  for(int i = 0; i < numCalls; i++){
+    j++;
   }
+  end = getTime();
 
-  return counter / (now - start);
+  return numCalls / (end - start);
 }
 
-double callFstat() {
-  double start, now;
-  int counter = 0;
-  int numSec = 5;
+double callGetuid(int numCalls) {
+  double start, end;
 
   int fd = open("out1.txt", O_RDONLY);
   if (fd == -1) {
@@ -124,19 +137,36 @@ double callFstat() {
     return 1;
   }
 
+  start = getTime();
+  for(int i = 0; i < numCalls; i++){
+    getuid();
+  }
+  end = getTime();
+
+  return numCalls / (end - start);
+}
+
+double callFstat(int numCalls) {
+  double start, end;
+
+  int fd = open("out1.txt", O_RDONLY);
+  if (fd == -1) {
+    perror("open");
+    return 1;
+  }
   struct stat statbuf;
 
   start = getTime();
-  now = getTime();
-
-  while (now - start < numSec) {
+  for(int i = 0; i < numCalls; i++){
     fstat(fd, &statbuf);
-    counter++;
-    now = getTime();
   }
+  end = getTime();
 
-  return counter / (now - start);
+  return numCalls / (end - start);
 }
+
+
+
 
 long findReasonableBlockCount(long bSize, int output) {
   // start with reading a single block, double it each iteration
@@ -182,7 +212,7 @@ long findReasonableBlockCount(long bSize, int output) {
   return bCount;
 }
 
-int benchmarkData(long *bSizes, int SIZE) {
+int benchmarkData(long *bSizes, int SIZE, int clearBool) {
 
   printf("bSize,bCount,run,MBspeed,Bspeed\n");
   // for each block size
@@ -190,7 +220,13 @@ int benchmarkData(long *bSizes, int SIZE) {
     // determine block count, don't print, callRead
     long bCount = findReasonableBlockCount(bSizes[i], 0);
     // run 10 times
+    if(clearBool == 0){
+      callRead(bSizes[i], bCount); //run once to be sure the file is cached
+    }
     for (int j = 0; j < 10; j++) {
+      if(clearBool == 1){
+        clearCache();
+      }
       double timeToRead = callRead(bSizes[i], bCount);
       long fileSize = bSizes[i] * bCount;
       // find speed in bytes/sec
@@ -204,44 +240,57 @@ int benchmarkData(long *bSizes, int SIZE) {
 }
 
 int systemCalls() {
+  int numCalls = 25000000;
   printf("call,run,speed\n");
   for (int j = 0; j < 10; j++) {
-    double numTimesPerSec = callLseek();
+    double numTimesPerSec = callLseek(numCalls);
     // write csv entry:run#,Metric
     printf("lseek,%d,%.2f\n", j, numTimesPerSec);
 
-    numTimesPerSec = callGetpid();
+    numTimesPerSec = callGetpid(numCalls);
     // write csv entry:run#,Metric
     printf("getpid,%d,%.2f\n", j, numTimesPerSec);
 
-    numTimesPerSec = callGetuid();
+    numTimesPerSec = callGetuid(numCalls);
     // write csv entry:run#,Metric
     printf("getuid,%d,%.2f\n", j, numTimesPerSec);
 
-    numTimesPerSec = callFstat();
+    numTimesPerSec = callFstat(numCalls);
     // write csv entry:run#,Metric
     printf("fstat,%d,%.2f\n", j, numTimesPerSec);
+
+    // numTimesPerSec = callIncr(numCalls);
+    // // write csv entry:run#,Metric
+    // printf("increment,%d,%.2f\n", j, numTimesPerSec);
   }
 
   return 0;
 }
 
-//.benchmark [-r|-b|-o]
+//.benchmark [-r|-b|-o|-l|-c]
 int main(int argc, char **argv) {
-  char mode = argv[1][1];
+  // char mode = argv[1][1];
+  clearCache();
+  double t = callRead(1024, 2752674);
+  printf("time to read: %f\n", t);
+  t = callRead(1024, 2752674);
+  printf("time to read: %f\n", t);
 
-  if (mode == 'r') {
-    long blockSize = atol(argv[2]);
-    findReasonableBlockCount(blockSize, 1);
-  } else if (mode == 'b') {
-    long bSizes[6] = {4, 8, 16, 32, 64, 128};
-    benchmarkData(bSizes, 6);
-  } else if (mode == 'o') {
-    long bSizes[1] = {1};
-    benchmarkData(bSizes, 1);
-  } else if (mode == 'l') {
-    systemCalls();
-  }
+  // if (mode == 'r') {
+  //   long blockSize = atol(argv[2]);
+  //   findReasonableBlockCount(blockSize, 1);
+  // } else if (mode == 'b') {
+  //   long bSizes[1] = {1024};
+  //   benchmarkData(bSizes, 1, 0);
+  // } else if (mode == 'o') {
+  //   long bSizes[1] = {1};
+  //   benchmarkData(bSizes, 1, 0);
+  // } else if (mode == 'l') {
+  //   systemCalls();
+  // } else if (mode == 'c') {
+  //   long bSizes[1] = {1024};
+  //   benchmarkData(bSizes, 1, 1);
+  // }
 
   return 0;
 }
