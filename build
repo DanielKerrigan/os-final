@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
 
-gcc run.c -lpthread -o run
+gcc run.c -pthread -o run -lm
 gcc benchmark.c -o benchmark

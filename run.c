@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <unistd.h>
 
 int ERROR_EXIT_STATUS = 1;
@@ -86,7 +87,7 @@ int readFileFast(char *filename) {
 
   pthread_t *threads = (pthread_t *)malloc(sizeof(pthread_t) * numThreads);
 
-  struct readArgs *args [numThreads];
+  struct readArgs *args[numThreads];
 
   for (int i = 0; i < numThreads; i++) {
     off_t offset = i * realBytesPerThread;
@@ -120,17 +121,18 @@ int readFileFast(char *filename) {
 
   printf("%08lx\n", xor);
 
-  for(int i = 0; i < numThreads; i++){
+  for (int i = 0; i < numThreads; i++) {
     free(args[i]);
   }
-  
+
   free(threads);
 
   return 0;
 }
 
 int writeFile(char *filename, long blockSize, long blockCount) {
-  int fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, S_IRWXU | S_IRWXG | S_IRWXO);
+  int fd =
+      open(filename, O_WRONLY | O_CREAT | O_TRUNC, S_IRWXU | S_IRWXG | S_IRWXO);
   if (fd == -1) {
     perror("open");
   }
