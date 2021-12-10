@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+
+# ./run2 <filename> <block_size>
+./benchmark -r $1 $2
