@@ -7,6 +7,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <string.h>
 
 struct readArgs {
   char *filename;
@@ -34,15 +35,28 @@ unsigned int readFile(char *filename, long blockSize, long blockCount,
 
   if (offset != 0) {
     off_t lseekOffset = lseek(fd, offset, SEEK_SET);
+    if (lseekOffset == -1) {
+      perror("lseek");
+      exit(1);
+    }
   }
 
   unsigned int *buffer = malloc(blockSize);
+  if(buffer == NULL){
+    fprintf(stderr, "failed to allocate memory\n");
+    exit(1);
+  }
+
   unsigned int xor_running = 0;
 
   size_t bytesRead;
 
   for (int i = 0; i < blockCount; i++) {
     bytesRead = read(fd, buffer, blockSize);
+    if (bytesRead == -1) {
+      perror("read");
+      exit(1);
+    }
     xor_running = xor_running ^ xorbuf(buffer, bytesRead / 4);
   }
 
@@ -65,16 +79,26 @@ void *readFileThread(void *arg) {
   pthread_exit((void *)xor);
 }
 
-int readFileFast(char *filename) {
+int readFileFast(char *filename, int quiet) {
   struct stat statbuf;
-  stat(filename, &statbuf);
+  int statRet = stat(filename, &statbuf);
+  if (statRet == -1) {
+      perror("stat");
+      exit(1);
+    }
 
   off_t totalFileSize = statbuf.st_size;
 
   int numThreads = 4;
   int bytesPerInt = 4;
 
-  long blockSize = 1024;
+  long blockSize = 65536; //from preliminary benchmark on Mac -- reset
+
+  if(totalFileSize < (numThreads * blockSize)){
+    long blockCount = (long)ceill(totalFileSize/(long double)blockSize);
+    readFile(filename, blockSize, blockCount, 0, quiet);
+    exit(1);
+  }
 
   off_t idealBytesPerThread =
       bytesPerInt * (totalFileSize / (numThreads * bytesPerInt));
@@ -84,7 +108,10 @@ int readFileFast(char *filename) {
   off_t realBytesPerThread = blockSize * blockCountPerThread;
 
   pthread_t *threads = (pthread_t *)malloc(sizeof(pthread_t) * numThreads);
-
+  if(threads == NULL){
+    fprintf(stderr, "failed to allocate memory for threads\n");
+    exit(1);
+  }
   struct readArgs *args[numThreads];
 
   for (int i = 0; i < numThreads; i++) {
@@ -94,10 +121,14 @@ int readFileFast(char *filename) {
 
     if (i == numThreads - 1) {
       off_t bytesLeft = totalFileSize - offset;
-      blockCount = (long)ceil((double)bytesLeft / blockSize);
+      blockCount = (long)ceill((long double)bytesLeft / blockSize);
     }
 
     args[i] = malloc(sizeof(struct readArgs));
+    if(args[i] == NULL){
+      fprintf(stderr, "failed to allocate memory for pointer to thread %d\n", i);
+      exit(1);
+    }
 
     args[i]->filename = filename;
     args[i]->blockSize = blockSize;
@@ -105,19 +136,28 @@ int readFileFast(char *filename) {
     args[i]->offset = offset;
     args[i]->id = i;
 
-    pthread_create(&threads[i], NULL, readFileThread, args[i]);
+    int threadCreateRet = pthread_create(&threads[i], NULL, readFileThread, args[i]);
+    if(threadCreateRet != 0){
+      fprintf(stderr, "failed create thread %d\n", i);
+      exit(1);
+    }
   }
 
   long xor = 0;
 
   for (int i = 0; i < numThreads; i++) {
     long xorThread;
-    pthread_join(threads[i], (void **)&xorThread);
-
+    int threadJoinRet = pthread_join(threads[i], (void **)&xorThread);
+    if(threadJoinRet != 0){
+      fprintf(stderr, "failed join thread %d\n", i);
+      exit(1);
+    }
     xor = xor^xorThread;
   }
 
-  printf("%08lx\n", xor);
+  if(quiet == 0){
+    printf("%08lx\n", xor);
+  }
 
   for (int i = 0; i < numThreads; i++) {
     free(args[i]);
@@ -138,7 +178,11 @@ int writeFile(char *filename, long blockSize, long blockCount) {
   unsigned int *buffer = malloc(blockSize);
 
   for (int i = 0; i < blockCount; i++) {
-    write(fd, buffer, blockSize);
+    int writeRet = write(fd, buffer, blockSize);
+    if (writeRet == -1) {
+      perror("write");
+      exit(1);
+    }
   }
 
   free(buffer);
@@ -147,29 +191,69 @@ int writeFile(char *filename, long blockSize, long blockCount) {
   return 0;
 }
 
-// ./run <filename> [-r|-w] <block_size> <block_count> [-q]
+// ./run <filename> [-r|-w|-f] <block_size> <block_count> [-q]
 int main(int argc, char **argv) {
+  if(argc < 3){
+    fprintf(stderr, "Not enough arguments. Use the command format below\n");
+    fprintf(stderr, "./run <filename> [-r|-w|-f] <block_size> <block_count> [-q]\n");
+    return 1;
+  }
+
+  if(argc > 6){
+    fprintf(stderr, "Too many arguments. Use the command format below\n");
+    fprintf(stderr, "./run <filename> [-r|-w|-f] <block_size> <block_count> [-q]\n");
+    return 1;
+  }
+
   char *filename = argv[1];
-  char mode = argv[2][1];
   int quiet = 0;
 
-  if (mode == 'f') {
-    return readFileFast(filename);
+  if (strcmp(argv[2], "-f") == 0) {
+    if(argc > 4){
+      fprintf(stderr, "Too many arguments. Use the command format for flag -f below\n");
+      fprintf(stderr, "./run <filename> -f [-q]\n");
+      return 1;
+    }
+    if(argc == 4){
+      if(strcmp(argv[3], "-q") == 0){
+        quiet = 1;
+      } else{
+        fprintf(stderr, "unknown flag %s\n", argv[3]);
+        return 1;
+      }
+    } 
+    readFileFast(filename, quiet);
   } else {
+    if(argc < 5){
+      fprintf(stderr, "Not enough arguments. Use the command format below\n");
+      fprintf(stderr, "./run <filename> [-r|-w|-f] <block_size> <block_count> [-q]\n");
+      return 1;
+    }
     long blockSize = atol(argv[3]);
     long blockCount = atol(argv[4]);
-
-    if (argc == 6 && argv[5][1] == 'q') {
-      quiet = 1;
+    if(blockSize <= 0 || blockCount <= 0){
+      fprintf(stderr, "invalid block size or block count\n");
+      return 1;
     }
 
-    if (mode == 'r') {
+    if (argc == 6){
+      if(strcmp(argv[5], "-q") == 0) {
+        quiet = 1;
+      }
+      else {
+        fprintf(stderr, "invalid flag %s\n", argv[5]);
+        return 1;
+      }
+    }
+
+    if (strcmp(argv[2], "-r") == 0) {
       return readFile(filename, blockSize, blockCount, 0, quiet);
-    } else if (mode == 'w') {
+    } else if (strcmp(argv[2], "-w") == 0) {
       return writeFile(filename, blockSize, blockCount);
     } else {
-      fprintf(stderr, "unknown flag -%c\n", mode);
+      fprintf(stderr, "unknown flag %s\n", argv[2]);
       return 1;
     }
   }
+  return 0;
 }
