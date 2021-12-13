@@ -79,7 +79,7 @@ void *readFileThread(void *arg) {
   pthread_exit((void *)xor);
 }
 
-int readFileFast(char *filename, int quiet) {
+int readFileFast(char *filename, long blockSize, int numThreads, int quiet) {
   struct stat statbuf;
   int statRet = stat(filename, &statbuf);
   if (statRet == -1) {
@@ -89,10 +89,7 @@ int readFileFast(char *filename, int quiet) {
 
   off_t totalFileSize = statbuf.st_size;
 
-  int numThreads = 4;
   int bytesPerInt = 4;
-
-  long blockSize = 65536; //from preliminary benchmark on Mac -- reset
 
   if(totalFileSize < (numThreads * blockSize)){
     long blockCount = (long)ceill(totalFileSize/(long double)blockSize);
@@ -191,65 +188,48 @@ int writeFile(char *filename, long blockSize, long blockCount) {
   return 0;
 }
 
-// ./run <filename> [-r|-w|-f] <block_size> <block_count> [-q]
-int main(int argc, char **argv) {
-  if(argc < 3){
-    fprintf(stderr, "Not enough arguments. Use the command format below\n");
-    fprintf(stderr, "./run <filename> [-r|-w|-f] <block_size> <block_count> [-q]\n");
-    return 1;
-  }
+// ./run <filename> [-r|-w] <block_size> <block_count> [-q]
+// ./run <filename> -f <block_size> <num_threads> [-q]
 
-  if(argc > 6){
-    fprintf(stderr, "Too many arguments. Use the command format below\n");
-    fprintf(stderr, "./run <filename> [-r|-w|-f] <block_size> <block_count> [-q]\n");
+int main(int argc, char **argv) {
+  if(argc < 5 || argc > 6){
+    fprintf(stderr, "Incorrect number of arguments. Use the command format below\n");
+    fprintf(stderr, "for normal read or write:\n./run <filename> [-r|-w] <block_size> <block_count> [-q]\n");
+    fprintf(stderr, "for fast read:\n./run <filename> -f <block_size> <nu_threads> [-q]\n");
     return 1;
   }
 
   char *filename = argv[1];
   int quiet = 0;
 
-  if (strcmp(argv[2], "-f") == 0) {
-    if(argc > 4){
-      fprintf(stderr, "Too many arguments. Use the command format for flag -f below\n");
-      fprintf(stderr, "./run <filename> -f [-q]\n");
-      return 1;
-    }
-    if(argc == 4){
-      if(strcmp(argv[3], "-q") == 0){
+  if(argc == 6){
+      if(strcmp(argv[5], "-q") == 0){
         quiet = 1;
       } else{
-        fprintf(stderr, "unknown flag %s\n", argv[3]);
+        fprintf(stderr, "unknown flag %s\n", argv[5]);
         return 1;
       }
-    } 
-    readFileFast(filename, quiet);
-  } else {
-    if(argc < 5){
-      fprintf(stderr, "Not enough arguments. Use the command format below\n");
-      fprintf(stderr, "./run <filename> [-r|-w|-f] <block_size> <block_count> [-q]\n");
+  } 
+
+  if (strcmp(argv[2], "-f") == 0) {
+    long blockSize = atol(argv[3]);
+    int numThreads = atoi(argv[4]);
+     if(blockSize <= 0 || numThreads <= 0){
+      fprintf(stderr, "invalid block size or number of threads\n");
       return 1;
     }
+    readFileFast(filename, blockSize, numThreads, quiet);
+  } else {
     long blockSize = atol(argv[3]);
     long blockCount = atol(argv[4]);
     if(blockSize <= 0 || blockCount <= 0){
       fprintf(stderr, "invalid block size or block count\n");
       return 1;
     }
-
-    if (argc == 6){
-      if(strcmp(argv[5], "-q") == 0) {
-        quiet = 1;
-      }
-      else {
-        fprintf(stderr, "invalid flag %s\n", argv[5]);
-        return 1;
-      }
-    }
-
     if (strcmp(argv[2], "-r") == 0) {
-      return readFile(filename, blockSize, blockCount, 0, quiet);
+      readFile(filename, blockSize, blockCount, 0, quiet);
     } else if (strcmp(argv[2], "-w") == 0) {
-      return writeFile(filename, blockSize, blockCount);
+      writeFile(filename, blockSize, blockCount);
     } else {
       fprintf(stderr, "unknown flag %s\n", argv[2]);
       return 1;

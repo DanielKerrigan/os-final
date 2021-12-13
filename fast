@@ -1,2 +1,2 @@
 #!/usr/bin/env bash
-./run $1 -f
+./run $1 -f 65536 4
