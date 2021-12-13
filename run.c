@@ -8,8 +8,6 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-int ERROR_EXIT_STATUS = 1;
-
 struct readArgs {
   char *filename;
   long blockSize;
@@ -31,7 +29,7 @@ unsigned int readFile(char *filename, long blockSize, long blockCount,
   int fd = open(filename, O_RDONLY);
   if (fd == -1) {
     perror("open");
-    return ERROR_EXIT_STATUS;
+    exit(1);
   }
 
   if (offset != 0) {
@@ -171,7 +169,7 @@ int main(int argc, char **argv) {
       return writeFile(filename, blockSize, blockCount);
     } else {
       fprintf(stderr, "unknown flag -%c\n", mode);
-      return ERROR_EXIT_STATUS;
+      return 1;
     }
   }
 }
