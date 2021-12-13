@@ -8,6 +8,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+enum cache { EMPTY, ADD, NOP };
 
 double getTime() {
   struct timeval tv;
@@ -15,9 +16,7 @@ double getTime() {
   return tv.tv_sec + (tv.tv_usec / 1000000.0);
 }
 
-enum cache { EMPTY, ADD, NOP };
-
-double callRead(long bSize, long bCount, char* filename) {
+double callRead(long bSize, long bCount, char *filename) {
   char bSizeStr[64];
   char bCountStr[64];
 
@@ -44,9 +43,8 @@ double callRead(long bSize, long bCount, char* filename) {
   return end - start;
 }
 
-
-void clearCache(){
-   char *arr[64] = {"purge"};
+void clearCache() {
+  char *arr[64] = {"purge"};
 
   int pid = fork();
   if (pid == 0) {
@@ -57,10 +55,9 @@ void clearCache(){
   if (ret == -1) {
     perror("wait");
   }
-
 }
 
-double callLseek(int numCalls, char* filename) {
+double callLseek(int numCalls, char *filename) {
   double start, end;
 
   int fd = open(filename, O_RDONLY);
@@ -71,7 +68,7 @@ double callLseek(int numCalls, char* filename) {
   }
 
   start = getTime();
-  for(int i = 0; i < numCalls; i++){
+  for (int i = 0; i < numCalls; i++) {
     lseek(fd, 0, SEEK_SET);
   }
   end = getTime();
@@ -83,7 +80,7 @@ double callGetpid(int numCalls) {
   double start, end;
 
   start = getTime();
-  for(int i = 0; i < numCalls; i++){
+  for (int i = 0; i < numCalls; i++) {
     getpid();
   }
   end = getTime();
@@ -96,7 +93,7 @@ double callIncr(int numCalls) {
   int j = 0;
 
   start = getTime();
-  for(int i = 0; i < numCalls; i++){
+  for (int i = 0; i < numCalls; i++) {
     j++;
   }
   end = getTime();
@@ -108,7 +105,7 @@ double callGetuid(int numCalls) {
   double start, end;
 
   start = getTime();
-  for(int i = 0; i < numCalls; i++){
+  for (int i = 0; i < numCalls; i++) {
     getuid();
   }
   end = getTime();
@@ -116,7 +113,7 @@ double callGetuid(int numCalls) {
   return numCalls / (end - start);
 }
 
-double callFstat(int numCalls, char* filename) {
+double callFstat(int numCalls, char *filename) {
   double start, end;
 
   int fd = open(filename, O_RDONLY);
@@ -127,7 +124,7 @@ double callFstat(int numCalls, char* filename) {
   struct stat statbuf;
 
   start = getTime();
-  for(int i = 0; i < numCalls; i++){
+  for (int i = 0; i < numCalls; i++) {
     fstat(fd, &statbuf);
   }
   end = getTime();
@@ -135,7 +132,8 @@ double callFstat(int numCalls, char* filename) {
   return numCalls / (end - start);
 }
 
-long findReasonableBlockCount(long bSize, char *filename, off_t testFileSize, enum cache action, int output) {
+long findReasonableBlockCount(long bSize, char *filename, off_t testFileSize,
+                              enum cache action, int output) {
   // start with reading a single block, double it each iteration
   long bCount = 1;
 
@@ -178,19 +176,24 @@ long findReasonableBlockCount(long bSize, char *filename, off_t testFileSize, en
   return bCount;
 }
 
-int benchmarkData(long *bSizes, int SIZE, enum cache action, char* filename, off_t testFileSize) {
+int benchmarkData(long *bSizes, int SIZE, enum cache action, char *filename,
+                  off_t testFileSize) {
 
   printf("bSize,bCount,run,MBspeed,Bspeed,seconds\n");
   // for each block size
   for (int i = 0; i < SIZE; i++) {
     // determine block count, don't print, callRead
-    long bCount = findReasonableBlockCount(bSizes[i], filename, testFileSize, action, 0);
-    // run 10 times
-    if(action == ADD){
-      callRead(bSizes[i], bCount, filename); //run once to be sure the file is cached
+    long bCount =
+        findReasonableBlockCount(bSizes[i], filename, testFileSize, action, 0);
+
+    if (action == ADD) {
+      // run once to be sure the file is cached
+      callRead(bSizes[i], bCount, filename);
     }
+
+    // run 10 times
     for (int j = 0; j < 10; j++) {
-      if(action == EMPTY){
+      if (action == EMPTY) {
         clearCache();
       }
       double timeToRead = callRead(bSizes[i], bCount, filename);
@@ -205,7 +208,7 @@ int benchmarkData(long *bSizes, int SIZE, enum cache action, char* filename, off
   return 0;
 }
 
-int systemCalls(char* filename) {
+int systemCalls(char *filename) {
   int numCalls = 25000000;
   printf("call,run,speed\n");
   for (int j = 0; j < 10; j++) {
@@ -238,7 +241,6 @@ int main(int argc, char **argv) {
   char mode = argv[1][1];
   char *filename = argv[2];
 
-
   int fd = open(filename, O_RDONLY);
   if (fd == -1) {
     perror("open");
@@ -247,12 +249,6 @@ int main(int argc, char **argv) {
   struct stat statbuf;
   fstat(fd, &statbuf);
   off_t testFileSize = statbuf.st_size;
-
-  // clearCache();
-  // double t = callRead(1024, 2752674);
-  // printf("time to read: %f\n", t);
-  // t = callRead(1024, 2752674);
-  // printf("time to read: %f\n", t);
 
   if (mode == 'r') {
     // find block size for one block count
