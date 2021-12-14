@@ -107,6 +107,28 @@ double callFast(char *filename, long blockSize, int numThreads) {
 
 
 void clearCache() {
+  char *arr[64] = {"./clear-cache-linux.sh"};
+
+  int pid = fork();
+  if (pid == -1){
+    perror("fork");
+    exit(1);
+  }
+  if (pid == 0) {
+    execvp(arr[0], arr);
+    perror("clear cache error");
+    exit(1);
+  }
+
+  int ret = wait(NULL);
+  if (ret == -1) {
+    perror("wait");
+    exit(1);
+  }
+}
+
+
+void clearCacheMac() {
   char *arr[64] = {"purge"};
 
   int pid = fork();
@@ -296,7 +318,7 @@ void measureFast(long* blockSizes, int blockSizesLEN, int* numThreads, int numTh
       }
 
       // run 10 times
-      for (int j = 0; j < 10; j++) {
+      for (int j = 0; j < 5; j++) {
         if (action == EMPTY) {
           clearCache();
         }
@@ -379,7 +401,7 @@ int main(int argc, char **argv) {
     }
     long blockSize = atol(argv[3]);
     findReasonableBlockCount(blockSize, filename, testFileSize, NOP, 1);
-  } else if (strcmp(argv[1], "--sys-calls") == 0) {
+  } else if (strcmp(argv[1], "--sys_calls") == 0) {
     // output csv for system calls
     systemCalls(filename);
   } else if (strcmp(argv[1], "--perf_cache") == 0) {
