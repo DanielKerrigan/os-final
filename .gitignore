@@ -5,6 +5,7 @@ benchmark
 .vscode
 *.txt
 ubuntu.iso
+scratch/
 
 # Prerequisites
 *.d
