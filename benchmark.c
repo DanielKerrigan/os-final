@@ -118,7 +118,7 @@ void clearCache() {
   char *arr[64] = {"./clear-cache-linux.sh"};
 
   int pid = fork();
-  if (pid == -1){
+  if (pid == -1) {
     perror("fork");
     exit(1);
   }
@@ -134,7 +134,6 @@ void clearCache() {
     exit(1);
   }
 }
-
 
 void clearCacheMac() {
   char *arr[64] = {"purge"};
@@ -365,7 +364,7 @@ void measureFast(long *blockSizes, int blockSizesLEN, int *numThreads,
       }
 
       // run 10 times
-      for (int j = 0; j < 5; j++) {
+      for (int j = 0; j < 10; j++) {
         if (action == EMPTY) {
           clearCache();
         }
