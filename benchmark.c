@@ -271,7 +271,7 @@ long findReasonableBlockCount(long bSize, char *filename, off_t testFileSize,
 
   if (output) {
     reasonableFileSize = bCount * bSize;
-    double fileSizeMiB = ((double)reasonableFileSize) / (1 << 20);
+    double fileSizeMiB = ((double)reasonableFileSize) / (1L << 20);
 
     printf("reasonable file size: %.2f MiB\n", fileSizeMiB);
     printf("time taken to read: %f seconds\n", delta);
@@ -287,6 +287,13 @@ long findReasonableBlockCountFast(long bSize, int numThreads, char *filename,
   // block count must be >= num threads
   long bCount = numThreads;
 
+  // lower threshold for cached threaded version
+  double threshold = action == ADD ? 2.5 : 5.0;
+
+  // don't read more than 12 GiB so that we will be able to fit
+  // it all in 16 GiB of RAM.
+  long maxFileSize = 12 * (1L << 30);
+
   // for timing
   double delta;
 
@@ -294,6 +301,11 @@ long findReasonableBlockCountFast(long bSize, int numThreads, char *filename,
 
   do {
     reasonableFileSize = bCount * bSize;
+
+    if (reasonableFileSize > maxFileSize) {
+      long maxBlockCount = maxFileSize / bSize;
+      return maxBlockCount;
+    }
 
     if (reasonableFileSize > testFileSize) {
       fprintf(stderr, "test file size is too small\n");
@@ -309,7 +321,7 @@ long findReasonableBlockCountFast(long bSize, int numThreads, char *filename,
     delta = callFast(filename, bSize, bCount, numThreads);
 
     bCount *= 2;
-  } while (delta < 2.5); // lower threshold for threaded version
+  } while (delta < threshold);
 
   bCount /= 2;
 
@@ -342,21 +354,21 @@ void benchmarkData(long *bSizes, int SIZE, enum cache action, char *filename,
       double bytesPerSec = ((double)fileSize) / timeToRead;
       // write csv entry: cache,bSize,bCount,run#,Mib/s, B/s, total seconds
       printf("%d,%ld,%ld,%d,%.2f,%.2f,%.2f\n", action, bSizes[i], bCount, j,
-             bytesPerSec / (1 << 20), bytesPerSec, timeToRead);
+             bytesPerSec / (1L << 20), bytesPerSec, timeToRead);
     }
   }
 }
 
 void measureFast(long *blockSizes, int blockSizesLEN, int *numThreads,
                  int numThreadsLEN, enum cache action, char *filename,
-                 off_t fileSize) {
+                 off_t testFileSize) {
 
-  printf("blockSize,numThreads,cached,run,MBspeed,Bspeed,seconds\n");
+  printf("blockSize,blockCount,numThreads,cached,run,MBspeed,Bspeed,seconds\n");
   for (int nt = 0; nt < numThreadsLEN; nt++) {
     for (int bs = 0; bs < blockSizesLEN; bs++) {
       // determine block count, don't print, callRead
       long bCount = findReasonableBlockCountFast(blockSizes[bs], numThreads[nt],
-                                                 filename, fileSize, action);
+                                                 filename, testFileSize, action);
 
       if (action == ADD) {
         // run once to be sure the file is cached
@@ -371,10 +383,11 @@ void measureFast(long *blockSizes, int blockSizesLEN, int *numThreads,
         double timeToRead =
             callFast(filename, blockSizes[bs], bCount, numThreads[nt]);
         // find speed in bytes/sec
-        double bytesPerSec = ((double)fileSize) / timeToRead;
+        off_t totalReadSize = blockSizes[bs] * bCount;
+        double bytesPerSec = ((double)totalReadSize) / timeToRead;
         // write csv entry: cache,run#,Mib/s,B/s,total seconds
-        printf("%ld,%d,%d,%d,%.2f,%.2f,%.2f\n", blockSizes[bs], numThreads[nt],
-               action, j, bytesPerSec / (1 << 20), bytesPerSec, timeToRead);
+        printf("%ld,%ld,%d,%d,%d,%.2f,%.2f,%.2f\n", blockSizes[bs], bCount, numThreads[nt],
+               action, j, bytesPerSec / (1L << 20), bytesPerSec, timeToRead);
       }
     }
   }
@@ -461,14 +474,14 @@ int main(int argc, char **argv) {
     // output csv with caching
     long bSizes[numBlockSizes] = {};
     for (int i = 0; i < numBlockSizes; i++) {
-      bSizes[i] = 1 << i;
+      bSizes[i] = 1L << i;
     }
     benchmarkData(bSizes, numBlockSizes, ADD, filename, testFileSize);
   } else if (strcmp(argv[1], "--perf_no_cache") == 0) {
     // output csv without caching
     long bSizes[numBlockSizes] = {};
     for (int i = 0; i < numBlockSizes; i++) {
-      bSizes[i] = 1 << i;
+      bSizes[i] = 1L << i;
     }
     benchmarkData(bSizes, numBlockSizes, EMPTY, filename, testFileSize);
   } else if (strcmp(argv[1], "--perf_cache_threads") == 0) {
@@ -477,10 +490,10 @@ int main(int argc, char **argv) {
     int nThreads[numNumThreads] = {};
     // start at 64B
     for (int i = 0; i < numBlockSizesFast; i++) {
-      bSizes[i] = 1 << (i + 6);
+      bSizes[i] = 1L << (i + 6);
     }
     for (int i = 0; i < numNumThreads; i++) {
-      nThreads[i] = 1 << i;
+      nThreads[i] = 1L << i;
     }
     measureFast(bSizes, numBlockSizesFast, nThreads, numNumThreads, ADD, filename,
                 testFileSize);
@@ -490,10 +503,10 @@ int main(int argc, char **argv) {
     int nThreads[numNumThreads] = {};
     // start at 64B
     for (int i = 0; i < numBlockSizesFast; i++) {
-      bSizes[i] = 1 << (i + 6);
+      bSizes[i] = 1L << (i + 6);
     }
     for (int i = 0; i < numNumThreads; i++) {
-      nThreads[i] = 1 << i;
+      nThreads[i] = 1L << i;
     }
     measureFast(bSizes, numBlockSizesFast, nThreads, numNumThreads, EMPTY, filename,
                 testFileSize);
