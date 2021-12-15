@@ -309,7 +309,7 @@ long findReasonableBlockCountFast(long bSize, int numThreads, char *filename,
     delta = callFast(filename, bSize, bCount, numThreads);
 
     bCount *= 2;
-  } while (delta < 5);
+  } while (delta < 2.5); // lower threshold for threaded version
 
   bCount /= 2;
 
@@ -363,8 +363,8 @@ void measureFast(long *blockSizes, int blockSizesLEN, int *numThreads,
         callFast(filename, blockSizes[bs], bCount, numThreads[nt]);
       }
 
-      // run 10 times
-      for (int j = 0; j < 10; j++) {
+      // run 5 times
+      for (int j = 0; j < 5; j++) {
         if (action == EMPTY) {
           clearCache();
         }
@@ -407,6 +407,7 @@ void systemCalls(char *filename) {
 }
 
 #define numBlockSizes 21
+#define numBlockSizesFast 13
 #define numNumThreads 6
 
 void printUsage() {
@@ -472,29 +473,29 @@ int main(int argc, char **argv) {
     benchmarkData(bSizes, numBlockSizes, EMPTY, filename, testFileSize);
   } else if (strcmp(argv[1], "--perf_cache_threads") == 0) {
     // output csv with caching & threads
-    long bSizes[numBlockSizes] = {};
+    long bSizes[numBlockSizesFast] = {};
     int nThreads[numNumThreads] = {};
-
-    for (int i = 0; i < numBlockSizes; i++) {
-      bSizes[i] = 1 << i;
+    // start at 64B
+    for (int i = 0; i < numBlockSizesFast; i++) {
+      bSizes[i] = 1 << (i + 6);
     }
     for (int i = 0; i < numNumThreads; i++) {
       nThreads[i] = 1 << i;
     }
-    measureFast(bSizes, numBlockSizes, nThreads, numNumThreads, ADD, filename,
+    measureFast(bSizes, numBlockSizesFast, nThreads, numNumThreads, ADD, filename,
                 testFileSize);
   } else if (strcmp(argv[1], "--perf_no_cache_threads") == 0) {
     // output csv without caching & threads
-    long bSizes[numBlockSizes] = {};
+    long bSizes[numBlockSizesFast] = {};
     int nThreads[numNumThreads] = {};
-
-    for (int i = 0; i < numBlockSizes; i++) {
-      bSizes[i] = 1 << i;
+    // start at 64B
+    for (int i = 0; i < numBlockSizesFast; i++) {
+      bSizes[i] = 1 << (i + 6);
     }
     for (int i = 0; i < numNumThreads; i++) {
       nThreads[i] = 1 << i;
     }
-    measureFast(bSizes, numBlockSizes, nThreads, numNumThreads, EMPTY, filename,
+    measureFast(bSizes, numBlockSizesFast, nThreads, numNumThreads, EMPTY, filename,
                 testFileSize);
   } else {
     fprintf(stderr, "Unknown option %s. Use options below\n", argv[1]);
