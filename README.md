@@ -6,6 +6,8 @@ Daniel Kerrigan (djk525)
 
 ## Instructions
 
+Our experiments were performed on a recent version of Ubuntu.
+
 ### Compiling
 
 To compile our code, you can run `./build`.
@@ -30,7 +32,7 @@ To find the reasonable block count for a given block size, you can run the follo
 
 To measure the performance of cold cache reads for various block sizes, the following command can be used:
 
-````
+```
 sudo ./benchmark --perf_no_cache <filename>
 ```
 
