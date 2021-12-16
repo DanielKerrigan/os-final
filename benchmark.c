@@ -9,8 +9,13 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+// EMPTY means clear the cache
+// ADD means do extra read to cache data
+// NOP means do nothing
 enum cache { EMPTY, ADD, NOP };
 
+// this function is based on code given in HW 4
+// return the wall time in seconds (with decimal)
 double getTime() {
   struct timeval tv;
   int timeOfDayRet = gettimeofday(&tv, NULL);
@@ -21,26 +26,33 @@ double getTime() {
   return tv.tv_sec + (tv.tv_usec / 1000000.0);
 }
 
+// fork and exec ./run for reading bCount blocks of size bSize
+// with a single thread
 double callRead(long bSize, long bCount, char *filename) {
+  // we need to turn the block size and block count into strings
   char bSizeStr[64];
   char bCountStr[64];
 
   double start, end;
 
+  // turn block size into a string
   int bSizeStrRet = sprintf(bSizeStr, "%ld", bSize);
   if (bSizeStrRet < 0) {
     fprintf(stderr, "error converting bSize to string\n");
     exit(1);
   }
 
+  // turn block count into a string
   int bCountStrRet = sprintf(bCountStr, "%ld", bCount);
   if (bCountStrRet < 0) {
     fprintf(stderr, "error converting bCount to string\n");
     exit(1);
   }
 
+  // create the argument array
   char *arr[64] = {"run", filename, "-r", bSizeStr, bCountStr, "-q"};
 
+  // get starting time before fork
   start = getTime();
   int pid = fork();
   if (pid == -1) {
@@ -48,7 +60,9 @@ double callRead(long bSize, long bCount, char *filename) {
     exit(1);
   }
   if (pid == 0) {
+    // in the child process, exec the command
     execvp("./run", arr);
+    // if exec returns, then there was an error
     perror("execvp");
     exit(1);
   }
@@ -58,13 +72,16 @@ double callRead(long bSize, long bCount, char *filename) {
     perror("wait");
     exit(1);
   }
+  // get the ending time after the child finishes
   end = getTime();
 
   return end - start;
 }
 
+// fork and exec ./run for fast read with a specific block count
 double callFast(char *filename, long blockSize, long blockCount,
                 int numThreads) {
+  // we need to turn the block size, block count, and num threads into strings
   char bSizeStr[64];
   char bCountStr[64];
   char nThreadsStr[64];
@@ -92,6 +109,7 @@ double callFast(char *filename, long blockSize, long blockCount,
   // ./run <filename> -t <block_size> <num_threads> <block_count>
   char *arr[64] = {"run", filename, "-t", bSizeStr, nThreadsStr, bCountStr};
 
+  // get starting time before fork
   start = getTime();
   int pid = fork();
   if (pid == -1) {
@@ -109,11 +127,13 @@ double callFast(char *filename, long blockSize, long blockCount,
     perror("wait");
     exit(1);
   }
+  // get end time after waiting for exec to exit
   end = getTime();
 
   return end - start;
 }
 
+// fork and exec the clear cache script
 void clearCache() {
   char *arr[64] = {"./clear-cache-linux.sh"};
 
@@ -135,6 +155,7 @@ void clearCache() {
   }
 }
 
+// fork and exec the clear cache command for MacOS
 void clearCacheMac() {
   char *arr[64] = {"purge"};
 
@@ -156,6 +177,7 @@ void clearCacheMac() {
   }
 }
 
+// measure how many times lseek can be called per second
 double callLseek(int numCalls, char *filename) {
   double start, end;
 
@@ -175,9 +197,11 @@ double callLseek(int numCalls, char *filename) {
   }
   end = getTime();
 
+  // lseek was called numCalls number of times in (end - start) seconds
   return numCalls / (end - start);
 }
 
+// measure how many times getpid can be called per second
 double callGetpid(int numCalls) {
   double start, end;
 
@@ -190,19 +214,7 @@ double callGetpid(int numCalls) {
   return numCalls / (end - start);
 }
 
-double callIncr(int numCalls) {
-  double start, end;
-  int j = 0;
-
-  start = getTime();
-  for (int i = 0; i < numCalls; i++) {
-    j++;
-  }
-  end = getTime();
-
-  return numCalls / (end - start);
-}
-
+// measure how many times getuid can be called per second
 double callGetuid(int numCalls) {
   double start, end;
 
@@ -215,6 +227,7 @@ double callGetuid(int numCalls) {
   return numCalls / (end - start);
 }
 
+// measure how many times fstat can be called per second
 double callFstat(int numCalls, char *filename) {
   double start, end;
 
@@ -238,6 +251,8 @@ double callFstat(int numCalls, char *filename) {
   return numCalls / (end - start);
 }
 
+// return the number of blocks of size bSize that can be read
+// in a reasonable amount of time (> 5 seconds)
 long findReasonableBlockCount(long bSize, char *filename, off_t testFileSize,
                               enum cache action, int output) {
   // start with reading a single block, double it each iteration
@@ -249,6 +264,7 @@ long findReasonableBlockCount(long bSize, char *filename, off_t testFileSize,
   long reasonableFileSize;
 
   do {
+    // make sure that the current block count isnt too big for the given file
     reasonableFileSize = bCount * bSize;
 
     if (reasonableFileSize > testFileSize) {
@@ -256,17 +272,22 @@ long findReasonableBlockCount(long bSize, char *filename, off_t testFileSize,
       exit(1);
     }
 
+    // handle the cache
     if (action == EMPTY) {
       clearCache();
     } else if (action == ADD) {
       callRead(bSize, bCount, filename);
     }
 
+    // time how long it takes to read the current block count
     delta = callRead(bSize, bCount, filename);
 
+    // double the block count for the next iteration
     bCount *= 2;
-  } while (delta < 5);
+  } while (delta < 5); // loop until read took more than 5s
 
+  // we double the block count at the end of the loop body
+  // bCount / 2 is the last bCount that was read
   bCount /= 2;
 
   if (output) {
@@ -290,8 +311,8 @@ long findReasonableBlockCountFast(long bSize, int numThreads, char *filename,
   // lower threshold for cached threaded version
   double threshold = action == ADD ? 2.5 : 5.0;
 
-  // don't read more than 12 GiB so that we will be able to fit
-  // it all in 16 GiB of RAM.
+  // for cached reads, don't read more than 12 GiB so that
+  // we will be able to fit it all in 16 GiB of RAM.
   long maxFileSize = 12 * (1L << 30);
 
   // for timing
@@ -302,6 +323,8 @@ long findReasonableBlockCountFast(long bSize, int numThreads, char *filename,
   do {
     reasonableFileSize = bCount * bSize;
 
+    // if the reads are cached, then we cap the maximum
+    // file size at 12 GiB.
     if (reasonableFileSize > maxFileSize) {
       long maxBlockCount = maxFileSize / bSize;
       return maxBlockCount;
@@ -312,22 +335,27 @@ long findReasonableBlockCountFast(long bSize, int numThreads, char *filename,
       exit(1);
     }
 
+    // handle the cache
     if (action == EMPTY) {
       clearCache();
     } else if (action == ADD) {
       callFast(filename, bSize, bCount, numThreads);
     }
-
+    // time the read
     delta = callFast(filename, bSize, bCount, numThreads);
-
+    // double the block count for the next iteration
     bCount *= 2;
-  } while (delta < threshold);
+  } while (delta < threshold); // loop until read takes longer than threshold
 
+  // we double the block count at the end of the loop body
+  // bCount / 2 is the last bCount that was read
   bCount /= 2;
 
   return bCount;
 }
 
+// benchmark single-threaded reads
+// SIZE is the number of block sizes in the bSizes array
 void benchmarkData(long *bSizes, int SIZE, enum cache action, char *filename,
                    off_t testFileSize) {
 
@@ -359,6 +387,7 @@ void benchmarkData(long *bSizes, int SIZE, enum cache action, char *filename,
   }
 }
 
+// benchmark multi-threaded reads
 void measureFast(long *blockSizes, int blockSizesLEN, int *numThreads,
                  int numThreadsLEN, enum cache action, char *filename,
                  off_t testFileSize) {
@@ -367,8 +396,8 @@ void measureFast(long *blockSizes, int blockSizesLEN, int *numThreads,
   for (int nt = 0; nt < numThreadsLEN; nt++) {
     for (int bs = 0; bs < blockSizesLEN; bs++) {
       // determine block count, don't print, callRead
-      long bCount = findReasonableBlockCountFast(blockSizes[bs], numThreads[nt],
-                                                 filename, testFileSize, action);
+      long bCount = findReasonableBlockCountFast(
+          blockSizes[bs], numThreads[nt], filename, testFileSize, action);
 
       if (action == ADD) {
         // run once to be sure the file is cached
@@ -385,15 +414,19 @@ void measureFast(long *blockSizes, int blockSizesLEN, int *numThreads,
         // find speed in bytes/sec
         off_t totalReadSize = blockSizes[bs] * bCount;
         double bytesPerSec = ((double)totalReadSize) / timeToRead;
-        // write csv entry: cache,run#,Mib/s,B/s,total seconds
-        printf("%ld,%ld,%d,%d,%d,%.2f,%.2f,%.2f\n", blockSizes[bs], bCount, numThreads[nt],
-               action, j, bytesPerSec / (1L << 20), bytesPerSec, timeToRead);
+        // write csv entry:
+        //blockSize,blockCount,numThreads,cache,run#,MiB/s,B/s,total seconds
+        printf("%ld,%ld,%d,%d,%d,%.2f,%.2f,%.2f\n", blockSizes[bs], bCount,
+               numThreads[nt], action, j, bytesPerSec / (1L << 20), bytesPerSec,
+               timeToRead);
       }
     }
   }
 }
 
+// benchmark the system calls
 void systemCalls(char *filename) {
+  // number of times to call each system call
   int numCalls = 25000000;
   printf("call,run,speed\n");
   for (int j = 0; j < 10; j++) {
@@ -412,10 +445,6 @@ void systemCalls(char *filename) {
     numTimesPerSec = callFstat(numCalls, filename);
     // write csv entry:run#,Metric
     printf("fstat,%d,%.2f\n", j, numTimesPerSec);
-
-    // numTimesPerSec = callIncr(numCalls);
-    // // write csv entry:run#,Metric
-    // printf("increment,%d,%.2f\n", j, numTimesPerSec);
   }
 }
 
@@ -423,6 +452,7 @@ void systemCalls(char *filename) {
 #define numBlockSizesFast 13
 #define numNumThreads 6
 
+// output instructions for running this program to stderr
 void printUsage() {
   fprintf(stderr, "./benchmark option <filename> [<block_size>]\n");
   fprintf(stderr, "where option is one "
@@ -434,6 +464,7 @@ void printUsage() {
 //[--reasonable|--perf_cache|--perf_no_cache|--perf_cache_threads|--perf_no_cache_threads|--sys_calls]
 //<filename> [block_size]
 int main(int argc, char **argv) {
+  // check number of arguments
   if (argc < 3 || argc > 4) {
     fprintf(stderr,
             "Wrong number of arguments. Use the command format below\n");
@@ -442,6 +473,8 @@ int main(int argc, char **argv) {
   }
 
   char *filename = argv[2];
+
+  // open the file and get its size in bytes
 
   int fd = open(filename, O_RDONLY);
   if (fd == -1) {
@@ -471,15 +504,17 @@ int main(int argc, char **argv) {
     // output csv for system calls
     systemCalls(filename);
   } else if (strcmp(argv[1], "--perf_cache") == 0) {
-    // output csv with caching
+    // output csv with caching, single thread
     long bSizes[numBlockSizes] = {};
+    // 1B to 1MiB
     for (int i = 0; i < numBlockSizes; i++) {
       bSizes[i] = 1L << i;
     }
     benchmarkData(bSizes, numBlockSizes, ADD, filename, testFileSize);
   } else if (strcmp(argv[1], "--perf_no_cache") == 0) {
-    // output csv without caching
+    // output csv without caching, single thread
     long bSizes[numBlockSizes] = {};
+    // 1B to 1MiB
     for (int i = 0; i < numBlockSizes; i++) {
       bSizes[i] = 1L << i;
     }
@@ -492,11 +527,12 @@ int main(int argc, char **argv) {
     for (int i = 0; i < numBlockSizesFast; i++) {
       bSizes[i] = 1L << (i + 6);
     }
+    // 1, 2, 4, 8, 16, 32
     for (int i = 0; i < numNumThreads; i++) {
       nThreads[i] = 1L << i;
     }
-    measureFast(bSizes, numBlockSizesFast, nThreads, numNumThreads, ADD, filename,
-                testFileSize);
+    measureFast(bSizes, numBlockSizesFast, nThreads, numNumThreads, ADD,
+                filename, testFileSize);
   } else if (strcmp(argv[1], "--perf_no_cache_threads") == 0) {
     // output csv without caching & threads
     long bSizes[numBlockSizesFast] = {};
@@ -505,11 +541,12 @@ int main(int argc, char **argv) {
     for (int i = 0; i < numBlockSizesFast; i++) {
       bSizes[i] = 1L << (i + 6);
     }
+    // 1, 2, 4, 8, 16, 32
     for (int i = 0; i < numNumThreads; i++) {
       nThreads[i] = 1L << i;
     }
-    measureFast(bSizes, numBlockSizesFast, nThreads, numNumThreads, EMPTY, filename,
-                testFileSize);
+    measureFast(bSizes, numBlockSizesFast, nThreads, numNumThreads, EMPTY,
+                filename, testFileSize);
   } else {
     fprintf(stderr, "Unknown option %s. Use options below\n", argv[1]);
     printUsage();
