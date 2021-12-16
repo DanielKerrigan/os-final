@@ -6,7 +6,14 @@ Daniel Kerrigan (djk525)
 
 ## Instructions
 
-Our experiments were performed on a recent version of Ubuntu.
+Our experiments were performed on a recent version of Ubuntu. The below instructions assume that the user has permission to execute the `./build`, `./fast`, `./run2`, and `./clear-cache-linux.sh` scripts. If the user does not have execute permissions, then they may run:
+
+```
+chmod +x ./build
+chmod +x ./fast
+chmod +x ./run2
+chmod +x ./clear-cache-linux.sh
+```
 
 ### Compiling
 
