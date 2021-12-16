@@ -325,7 +325,7 @@ long findReasonableBlockCountFast(long bSize, int numThreads, char *filename,
 
     // if the reads are cached, then we cap the maximum
     // file size at 12 GiB.
-    if (reasonableFileSize > maxFileSize) {
+    if (action == ADD && reasonableFileSize > maxFileSize) {
       long maxBlockCount = maxFileSize / bSize;
       return maxBlockCount;
     }
@@ -449,7 +449,7 @@ void systemCalls(char *filename) {
 }
 
 #define numBlockSizes 21
-#define numBlockSizesFast 13
+#define numBlockSizesFast 17
 #define numNumThreads 6
 
 // output instructions for running this program to stderr
@@ -523,9 +523,9 @@ int main(int argc, char **argv) {
     // output csv with caching & threads
     long bSizes[numBlockSizesFast] = {};
     int nThreads[numNumThreads] = {};
-    // start at 64B
+    // start at 4B up to 256KiB
     for (int i = 0; i < numBlockSizesFast; i++) {
-      bSizes[i] = 1L << (i + 6);
+      bSizes[i] = 1L << (i + 2);
     }
     // 1, 2, 4, 8, 16, 32
     for (int i = 0; i < numNumThreads; i++) {
@@ -537,9 +537,9 @@ int main(int argc, char **argv) {
     // output csv without caching & threads
     long bSizes[numBlockSizesFast] = {};
     int nThreads[numNumThreads] = {};
-    // start at 64B
+    // start at 4B up to 256KiB
     for (int i = 0; i < numBlockSizesFast; i++) {
-      bSizes[i] = 1L << (i + 6);
+      bSizes[i] = 1L << (i + 2);
     }
     // 1, 2, 4, 8, 16, 32
     for (int i = 0; i < numNumThreads; i++) {
